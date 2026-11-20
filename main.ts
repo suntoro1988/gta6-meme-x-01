@@ -13,16 +13,34 @@
 // stand in for /bot and /output:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
+const DEST = join(OUTPUT_DIR, 'POST.json');
 try {
-  copyFileSync(join(BOT_DIR, 'POST.json'), join(OUTPUT_DIR, 'POST.json'));
+  copyFileSync(join(BOT_DIR, 'POST.json'), DEST);
 } catch (err) {
   console.error(`POST.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
   process.exit(1);
 }
+
+// The gate reads the post from the URL in POST.json, so refuse a
+// placeholder or malformed address here instead of handing the gate
+// a post it cannot read. A real post URL looks like
+// https://x.com/<handle>/status/<digits>.
+let url: unknown;
+try {
+  url = (JSON.parse(readFileSync(DEST, 'utf8')) as { url?: unknown }).url;
+} catch (err) {
+  console.error(`POST.json is not valid JSON: ${(err as Error).message}`);
+  process.exit(1);
+}
+if (typeof url !== 'string' || !/^https:\/\/x\.com\/[^/]+\/status\/\d+$/.test(url)) {
+  console.error(`POST.json does not name a real X post URL: ${String(url)}`);
+  process.exit(1);
+}
+console.log(`POST.json copied to ${DEST}: ${url}`);
